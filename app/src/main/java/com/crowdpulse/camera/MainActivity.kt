@@ -33,10 +33,11 @@ class MainActivity : ComponentActivity() {
     private lateinit var optimizationManager: OptimizationManager
     private lateinit var smartController: SmartController
 
-    private val isStreaming  = MutableStateFlow(false)
-    private val isConnected  = MutableStateFlow(false)
-    private val userEmail    = MutableStateFlow<String?>(null)
-    private val serverIp     = MutableStateFlow("10.0.2.2")
+    private val isStreaming   = MutableStateFlow(false)
+    private val isConnected   = MutableStateFlow(false)
+    private val userEmail     = MutableStateFlow<String?>(null)
+    private val sessionCode   = MutableStateFlow("")
+    private val serverHost    = MutableStateFlow("")
 
     private val requestPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
@@ -71,14 +72,18 @@ class MainActivity : ComponentActivity() {
         )
 
         val prefs = getSharedPreferences("AppPrefs", Context.MODE_PRIVATE)
-        val savedIp = prefs.getString("server_ip", "10.0.2.2") ?: "10.0.2.2"
-        serverIp.value = savedIp
+        val savedCode = prefs.getString("session_code", "") ?: ""
+        val savedHost = prefs.getString("server_host", "") ?: ""
+        sessionCode.value = savedCode
+        serverHost.value = savedHost
 
         authManager         = AuthManager(this)
         webrtcClient        = WebRTCClient(this) { connected ->
             isConnected.value = connected
         }
-        webrtcClient.setServerIp(savedIp)
+        if (savedCode.isNotBlank() && savedHost.isNotBlank()) {
+            webrtcClient.setSession(savedHost, savedCode)
+        }
         
         optimizationManager = OptimizationManager(this)
 
@@ -113,7 +118,8 @@ class MainActivity : ComponentActivity() {
                 val streamState  by isStreaming.collectAsState()
                 val connState    by isConnected.collectAsState()
                 val emailState   by userEmail.collectAsState()
-                val ipState      by serverIp.collectAsState()
+                val codeState    by sessionCode.collectAsState()
+                val hostState    by serverHost.collectAsState()
 
                 NavHost(
                     navController    = navController,
@@ -181,11 +187,16 @@ class MainActivity : ComponentActivity() {
                             onToggleFlash = {
                                 cameraManager.toggleFlash()
                             },
-                            serverIp = ipState,
-                            onIpChanged = { newIp ->
-                                serverIp.value = newIp
-                                getSharedPreferences("AppPrefs", Context.MODE_PRIVATE).edit().putString("server_ip", newIp).apply()
-                                webrtcClient.setServerIp(newIp)
+                            sessionCode = codeState,
+                            serverHost  = hostState,
+                            onSessionChanged = { newHost, newCode ->
+                                sessionCode.value = newCode
+                                serverHost.value  = newHost
+                                getSharedPreferences("AppPrefs", Context.MODE_PRIVATE).edit()
+                                    .putString("session_code", newCode)
+                                    .putString("server_host", newHost)
+                                    .apply()
+                                webrtcClient.setSession(newHost, newCode)
                             }
                         )
                     }

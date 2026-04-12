@@ -1,50 +1,151 @@
-const videoStream = document.getElementById('videoStream');
-const noSignal = document.getElementById('noSignal');
-const reconnectingOverlay = document.getElementById('reconnectingOverlay');
-const peopleCount = document.getElementById('peopleCount');
-const statusBadge = document.getElementById('statusBadge');
-const statusIndicator = document.getElementById('statusIndicator');
-const statusLabel = document.getElementById('statusLabel');
-const timestampDisplay = document.getElementById('timestampDisplay');
-const latencyCalc = document.getElementById('latencyCalc');
+// ── DOM refs ────────────────────────────────────────────────────────────────
+const videoStream        = document.getElementById('videoStream');
+const noSignal           = document.getElementById('noSignal');
+const reconnectingOverlay= document.getElementById('reconnectingOverlay');
+const peopleCount        = document.getElementById('peopleCount');
+const statusBadge        = document.getElementById('statusBadge');
+const statusIndicator    = document.getElementById('statusIndicator');
+const statusLabel        = document.getElementById('statusLabel');
+const timestampDisplay   = document.getElementById('timestampDisplay');
+const latencyCalc        = document.getElementById('latencyCalc');
+const densityCard        = document.getElementById('densityCard');
+const alertBox           = document.getElementById('alertBox');
+const alertIcon          = document.getElementById('alertIcon');
+const alertTitle         = document.getElementById('alertTitle');
+const alertMessage       = document.getElementById('alertMessage');
+const statusText         = document.getElementById('statusText');
+const statusDot          = document.getElementById('statusDot');
+const alertSound         = document.getElementById('alertSound');
+const sessionPanel       = document.getElementById('sessionPanel');
+const codeDisplay        = document.getElementById('codeDisplay');
+const qrCanvas           = document.getElementById('qrCanvas');
+const currentSessionCode = document.getElementById('currentSessionCode');
+const newSessionBtn      = document.getElementById('newSessionBtn');
+const copyBtn            = document.getElementById('copyBtn');
 
-const densityCard = document.getElementById('densityCard');
-const alertBox = document.getElementById('alertBox');
-const alertIcon = document.getElementById('alertIcon');
-const alertTitle = document.getElementById('alertTitle');
-const alertMessage = document.getElementById('alertMessage');
-const statusText = document.getElementById('statusText');
-const statusDot = document.getElementById('statusDot');
-const alertSound = document.getElementById('alertSound');
-
+// ── State ───────────────────────────────────────────────────────────────────
 let ws;
-let lastFrameTime = Date.now();
+let lastFrameTime       = Date.now();
 let checkConnectionInterval;
-let redStateStartTime = 0;
-let isAlertActive = false;
+let redStateStartTime   = 0;
+let isAlertActive       = false;
+let activeSessionCode   = null;     // current 6-char code
+let activeServerHost    = null;     // current host (no protocol)
 
-const STORAGE_KEY = 'crowdpulse_server_host';
+const STORAGE_KEY       = 'crowdpulse_server_host';
+const CODE_STORAGE_KEY  = 'crowdpulse_session_code';
 
-function applyServerUrl() {
-    const input = document.getElementById('serverUrlInput').value.trim();
-    if (!input) return;
-    // Strip any protocol prefix the user may have typed
-    const host = input.replace(/^wss?:\/\//, '').replace(/^https?:\/\//, '');
-    localStorage.setItem(STORAGE_KEY, host);
-    if (ws) ws.close();
-    initWebSocket(host);
+// ── Helpers ─────────────────────────────────────────────────────────────────
+function getServerHost() {
+    const raw = document.getElementById('serverUrlInput').value.trim();
+    if (raw) return raw.replace(/^wss?:\/\//, '').replace(/^https?:\/\//, '');
+    return localStorage.getItem(STORAGE_KEY) || '';
 }
 
-function initWebSocket(host) {
+function getHttpBase(host) {
+    const isLocal = host.startsWith('localhost') || host.startsWith('127.') || host.startsWith('10.0.');
+    return isLocal ? `http://${host}` : `https://${host}`;
+}
+
+function getWsBase(host) {
+    const isLocal = host.startsWith('localhost') || host.startsWith('127.') || host.startsWith('10.0.');
+    return isLocal ? `ws://${host}` : `wss://${host}`;
+}
+
+// ── Session creation ─────────────────────────────────────────────────────────
+async function createNewSession() {
+    const host = getServerHost();
     if (!host) {
-        statusText.textContent = 'Enter server URL above';
-        statusDot.className = 'w-3 h-3 rounded-full bg-slate-400';
+        alert('Please enter the backend server URL first.');
         return;
     }
-    // Use wss:// for any remote host, ws:// only for localhost / 10.0.x
-    const isLocal = host.startsWith('localhost') || host.startsWith('127.') || host.startsWith('10.0.');
-    const protocol = isLocal ? 'ws' : 'wss';
-    const wsUrl = `${protocol}://${host}/ws/dashboard`;
+
+    // Save & persist the host
+    localStorage.setItem(STORAGE_KEY, host);
+    activeServerHost = host;
+    document.getElementById('serverUrlInput').value = host;
+
+    // Close any existing WS
+    if (ws) { ws.close(); ws = null; }
+
+    // Show spinner on button
+    newSessionBtn.disabled = true;
+    newSessionBtn.innerHTML = `
+        <svg class="w-4 h-4 animate-spin-slow" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+        </svg>
+        Creating...`;
+
+    try {
+        const res = await fetch(`${getHttpBase(host)}/session/create`, { method: 'POST' });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+        const code = data.code;
+
+        activeSessionCode = code;
+        localStorage.setItem(CODE_STORAGE_KEY, code);
+
+        showSessionCode(code);
+        connectToDashboard(host, code);
+
+    } catch (err) {
+        console.error('Session creation failed', err);
+        alert(`Failed to reach server at "${host}".\n\nMake sure the backend is running and the URL is correct.`);
+    } finally {
+        newSessionBtn.disabled = false;
+        newSessionBtn.innerHTML = `
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
+            </svg>
+            New Session`;
+    }
+}
+
+// ── Show the 6-char code visually ─────────────────────────────────────────────
+function showSessionCode(code) {
+    // Render each char as a styled box
+    codeDisplay.innerHTML = '';
+    for (const ch of code) {
+        const span = document.createElement('span');
+        span.className = 'code-char animate-slide-down';
+        span.textContent = ch;
+        codeDisplay.appendChild(span);
+    }
+
+    // Update sidebar badge
+    currentSessionCode.textContent = code;
+
+    // Generate QR code (encodes the code string so operator can share instantly)
+    QRCode.toCanvas(qrCanvas, code, { width: 120, margin: 1, color: { dark: '#1e3a8a', light: '#eff6ff' } });
+
+    // Show panel
+    sessionPanel.classList.remove('hidden');
+}
+
+// ── Copy code to clipboard ───────────────────────────────────────────────────
+function copyCode() {
+    if (!activeSessionCode) return;
+    navigator.clipboard.writeText(activeSessionCode).then(() => {
+        copyBtn.classList.add('copy-btn-success');
+        copyBtn.textContent = '✓ Copied!';
+        setTimeout(() => {
+            copyBtn.classList.remove('copy-btn-success');
+            copyBtn.innerHTML = `
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                        d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/>
+                </svg>
+                Copy Code`;
+        }, 2000);
+    });
+}
+
+// ── WebSocket connection (code-scoped) ────────────────────────────────────────
+function connectToDashboard(host, code) {
+    activeServerHost = host;
+    activeSessionCode = code;
+
+    const wsUrl = `${getWsBase(host)}/ws/dashboard/${code}`;
 
     statusText.textContent = 'Connecting...';
     statusDot.className = 'w-3 h-3 rounded-full bg-amber-400 animate-pulse';
@@ -61,8 +162,13 @@ function initWebSocket(host) {
     ws.onclose = () => {
         statusText.textContent = 'Disconnected';
         statusDot.className = 'w-3 h-3 rounded-full bg-red-500';
-        // Auto-retry after 4 seconds
-        setTimeout(() => initWebSocket(host), 4000);
+        clearInterval(checkConnectionInterval);
+        // Auto-retry after 4 seconds with the same code (don't generate a new one)
+        setTimeout(() => {
+            if (activeSessionCode && activeServerHost) {
+                connectToDashboard(activeServerHost, activeSessionCode);
+            }
+        }, 4000);
     };
 
     ws.onerror = () => {
@@ -76,36 +182,29 @@ function initWebSocket(host) {
     };
 }
 
+// ── Dashboard update ─────────────────────────────────────────────────────────
 function updateDashboard(data) {
     lastFrameTime = Date.now();
     reconnectingOverlay.classList.replace('opacity-100', 'opacity-0');
     reconnectingOverlay.classList.add('pointer-events-none');
     
-    // Update Video
     if (data.image_b64) {
         videoStream.src = "data:image/jpeg;base64," + data.image_b64;
         videoStream.classList.remove('hidden');
         noSignal.classList.add('hidden');
     }
 
-    // Update Count
     peopleCount.textContent = data.count;
 
-    // Time
     const d = new Date();
     timestampDisplay.textContent = d.toLocaleTimeString();
 
-    // Update Density Logic
     applyStatusColor(data.status);
     
-    // Alert System Logic (> 10s Red)
     if (data.status === "RED") {
         if (redStateStartTime === 0) redStateStartTime = Date.now();
-        
         const duration = (Date.now() - redStateStartTime) / 1000;
-        if (duration > 10 && !isAlertActive) {
-            triggerAlert();
-        }
+        if (duration > 10 && !isAlertActive) triggerAlert();
     } else {
         redStateStartTime = 0;
         if (isAlertActive) clearAlert();
@@ -114,7 +213,6 @@ function updateDashboard(data) {
 
 function applyStatusColor(status) {
     statusLabel.textContent = status;
-    // reset classes
     statusBadge.className = "inline-flex w-full justify-center items-center gap-2 px-4 py-3 rounded-xl font-bold transition-colors duration-300";
     densityCard.className = "glass-panel rounded-2xl p-6 transition-all duration-500 border-2";
 
@@ -143,7 +241,6 @@ function triggerAlert() {
     alertMessage.textContent = "High density threshold exceeded for >10 seconds. Dispatching security.";
     alertMessage.classList.replace('text-slate-500', 'text-red-600');
     
-    // Play sound (Requires user to have clicked on the page first due to browser policies)
     try {
         alertSound.play().catch(e => console.log("Sound blocked by browser policy"));
     } catch(e) {}
@@ -162,20 +259,24 @@ function clearAlert() {
 
 function checkFallbackState() {
     const timeSinceLastFrame = Date.now() - lastFrameTime;
-    
-    // Latency text
     latencyCalc.textContent = `${Math.floor(timeSinceLastFrame / 1000)}s ago`;
 
-    // Case 2: Network Lost -> Trigger Reconnecting Fallback if no frame > 3s
     if (timeSinceLastFrame > 3000) {
         reconnectingOverlay.classList.replace('opacity-0', 'opacity-100');
         reconnectingOverlay.classList.remove('pointer-events-none');
     }
 }
 
-// On load: restore saved server host and auto-connect
+// ── On load: restore saved session ───────────────────────────────────────────
 const savedHost = localStorage.getItem(STORAGE_KEY);
+const savedCode = localStorage.getItem(CODE_STORAGE_KEY);
+
 if (savedHost) {
     document.getElementById('serverUrlInput').value = savedHost;
-    initWebSocket(savedHost);
+}
+if (savedHost && savedCode) {
+    // Restore the UI but let the user click "New Session" for a fresh code,
+    // or auto-reconnect if the session might still be alive.
+    showSessionCode(savedCode);
+    connectToDashboard(savedHost, savedCode);
 }

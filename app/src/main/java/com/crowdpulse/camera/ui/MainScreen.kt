@@ -38,8 +38,9 @@ fun MainScreen(
     onSurfaceAvailable: (android.view.Surface?) -> Unit = {},
     onFlipCamera: () -> Unit = {},
     onToggleFlash: () -> Unit = {},
-    serverIp: String = "10.0.2.2",
-    onIpChanged: (String) -> Unit = {}
+    sessionCode: String = "",
+    serverHost: String = "",
+    onSessionChanged: (host: String, code: String) -> Unit = { _, _ -> }
 ) {
     // ── Stats counters ─────────────────────────────────────────────────────────
     var frameCount  by remember { mutableIntStateOf(0) }
@@ -102,25 +103,40 @@ fun MainScreen(
     )
 
     var showSettingsDialog by remember { mutableStateOf(false) }
-    var ipInput by remember { mutableStateOf(serverIp) }
+    var codeInput by remember { mutableStateOf(sessionCode) }
+    var hostInput by remember { mutableStateOf(serverHost) }
 
     if (showSettingsDialog) {
         AlertDialog(
             onDismissRequest = { showSettingsDialog = false },
-            title = { Text("Server Configuration", fontWeight = FontWeight.Bold) },
+            title = { Text("Connect to Session", fontWeight = FontWeight.Bold) },
             text = {
-                OutlinedTextField(
-                    value = ipInput,
-                    onValueChange = { ipInput = it },
-                    label = { Text("Backend IP Address") },
-                    singleLine = true
-                )
+                Column(verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(8.dp)) {
+                    OutlinedTextField(
+                        value = hostInput,
+                        onValueChange = { hostInput = it.trim() },
+                        label = { Text("Backend Host") },
+                        placeholder = { Text("e.g. crowdpulse.onrender.com") },
+                        singleLine = true,
+                        supportingText = { Text("Your Render/ngrok URL (no https://)."  ) }
+                    )
+                    OutlinedTextField(
+                        value = codeInput,
+                        onValueChange = { codeInput = it.uppercase().take(6) },
+                        label = { Text("6-Character Code") },
+                        placeholder = { Text("e.g. XK92PL") },
+                        singleLine = true,
+                        supportingText = { Text("Get this code from the CrowdPulse web dashboard.") }
+                    )
+                }
             },
             confirmButton = {
                 TextButton(onClick = {
-                    onIpChanged(ipInput)
-                    showSettingsDialog = false
-                }) { Text("Reconnect", color = PrimaryAccent, fontWeight = FontWeight.Bold) }
+                    if (codeInput.length == 6 && hostInput.isNotBlank()) {
+                        onSessionChanged(hostInput, codeInput)
+                        showSettingsDialog = false
+                    }
+                }) { Text("Connect", color = PrimaryAccent, fontWeight = FontWeight.Bold) }
             },
             dismissButton = {
                 TextButton(onClick = { showSettingsDialog = false }) { Text("Cancel", color = TextSubtle) }
@@ -408,9 +424,10 @@ fun MainScreen(
                 QuickActionButton(icon = Icons.Outlined.FlipCameraAndroid, label = "Flip", onClick = onFlipCamera)
                 QuickActionButton(icon = Icons.Outlined.FlashOn,          label = "Flash", onClick = onToggleFlash)
                 QuickActionButton(icon = Icons.Outlined.HighQuality,      label = "Quality")
-                QuickActionButton(icon = Icons.Outlined.Settings,         label = "Server", onClick = { 
-                    ipInput = serverIp
-                    showSettingsDialog = true 
+                QuickActionButton(icon = Icons.Outlined.Settings,         label = "Session", onClick = {
+                    codeInput = sessionCode
+                    hostInput = serverHost
+                    showSettingsDialog = true
                 })
             }
         }

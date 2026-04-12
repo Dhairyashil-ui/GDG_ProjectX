@@ -6,6 +6,13 @@ import kotlinx.coroutines.*
 import okhttp3.*
 import okio.ByteString
 
+/**
+ * Manages the WebSocket connection to the CrowdPulse backend.
+ *
+ * Connection URL format: ws(s)://<host>/ws/camera/<sessionCode>
+ * The [sessionCode] is a 6-char alphanumeric code obtained from the
+ * web dashboard's "New Session" button.
+ */
 class WebRTCClient(private val context: Context, private val onConnectionStateChanged: (Boolean) -> Unit) {
 
     private val client = OkHttpClient()
@@ -13,56 +20,68 @@ class WebRTCClient(private val context: Context, private val onConnectionStateCh
     var isConnected = false
         private set
 
-    // Default: emulator localhost. Override via setServerIp() for physical devices or cloud.
-    private var serverHost = "10.0.2.2:8000"
-    private var useSecure = false  // set to true for wss:// (cloud/Render)
+    // Default fallback (emulator localhost). Will be overwritten via setSession().
+    private var serverHost  = "10.0.2.2:8000"
+    private var useSecure   = false
+    private var sessionCode = ""        // current 6-char session code
 
     private val scope = CoroutineScope(Dispatchers.IO)
 
-    init {
+    /**
+     * Set or update the backend host. No session code required here;
+     * call [setSession] to provide the code and connect.
+     */
+    fun setServerHost(host: String) {
+        val isLocal = host.startsWith("10.0.") || host.startsWith("192.168.") || host.startsWith("localhost")
+        serverHost = if (isLocal) "$host:8000" else host
+        useSecure  = !isLocal
+    }
+
+    /**
+     * Set the session code and (re)connect to /ws/camera/{code}.
+     * Called after the user enters the code validated by the backend.
+     */
+    fun setSession(host: String, code: String) {
+        setServerHost(host)
+        sessionCode = code.uppercase()
+        webSocket?.close(1000, "Session Changed")
+        isConnected = false
+        onConnectionStateChanged(false)
         connectWebSocket()
     }
 
-    fun setServerIp(ip: String) {
-        // ip can be "10.0.2.2" or "myapp.onrender.com" (no port for Render)
-        val isLocal = ip.startsWith("10.0.") || ip.startsWith("192.168.") || ip.startsWith("localhost")
-        serverHost = if (isLocal) "$ip:8000" else ip
-        useSecure = !isLocal
-        if (serverHost != "$ip:8000" || webSocket == null) {
-            webSocket?.close(1000, "IP Changed")
-            isConnected = false
-            onConnectionStateChanged(false)
-            connectWebSocket()
-        }
-    }
-
     private fun connectWebSocket() {
+        if (sessionCode.isBlank()) {
+            Log.w("WebRTCClient", "No session code set — not connecting.")
+            return
+        }
         val protocol = if (useSecure) "wss" else "ws"
-        val url = "$protocol://$serverHost/ws/camera"
+        val url = "$protocol://$serverHost/ws/camera/$sessionCode"
         Log.d("WebRTCClient", "Connecting to: $url")
         val request = Request.Builder().url(url).build()
         
         webSocket = client.newWebSocket(request, object : WebSocketListener() {
             override fun onOpen(webSocket: WebSocket, response: Response) {
-                Log.d("WebRTCClient", "WebSocket Connected!")
+                Log.d("WebRTCClient", "WebSocket Connected! Session: $sessionCode")
                 isConnected = true
                 onConnectionStateChanged(true)
             }
 
             override fun onMessage(webSocket: WebSocket, text: String) {
-                // Not expecting messages from server right now
+                // Not expecting text messages from server
             }
 
             override fun onClosing(webSocket: WebSocket, code: Int, reason: String) {
                 webSocket.close(1000, null)
-                Log.d("WebRTCClient", "WebSocket Closing: $reason")
+                Log.d("WebRTCClient", "WebSocket Closing: $reason (code $code)")
             }
 
             override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
                 if (isConnected) {
                     isConnected = false
                     onConnectionStateChanged(false)
-                    handleDisconnection()
+                    // Don't auto-retry if session was rejected (4404 = invalid/expired)
+                    if (code != 4404) handleDisconnection()
                 }
             }
 
@@ -79,10 +98,10 @@ class WebRTCClient(private val context: Context, private val onConnectionStateCh
 
     private fun handleDisconnection() {
         scope.launch {
-            Log.e("WebRTCClient", "Connection lost! Retrying every 3 seconds...")
+            Log.e("WebRTCClient", "Connection lost! Retrying in 3 seconds...")
             delay(3000)
             if (!isConnected) {
-                Log.d("WebRTCClient", "Attempting reconnect...")
+                Log.d("WebRTCClient", "Attempting reconnect for session: $sessionCode")
                 connectWebSocket()
             }
         }
@@ -90,8 +109,6 @@ class WebRTCClient(private val context: Context, private val onConnectionStateCh
 
     fun sendFrame(jpegBytes: ByteArray) {
         if (!isConnected) return
-        
-        // Use OkHttp WebSockets to push bytes directly
         val byteString = ByteString.of(*jpegBytes)
         val success = webSocket?.send(byteString) ?: false
         if (!success) {
