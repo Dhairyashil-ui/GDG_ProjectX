@@ -167,10 +167,20 @@ function connectToDashboard(host, code) {
         checkConnectionInterval = setInterval(checkFallbackState, 1000);
     };
 
-    ws.onclose = () => {
+    ws.onclose = (event) => {
         statusText.textContent = 'Disconnected';
         statusDot.className = 'w-3 h-3 rounded-full bg-red-500';
         clearInterval(checkConnectionInterval);
+
+        // If the backend restarted or the session expired, it sends code 4404
+        if (event.code === 4404) {
+            console.warn("Session expired or invalid code from server.");
+            alert("This session has ended (the server restarted or connection expired). Please click 'New Session' to start a new one.");
+            localStorage.removeItem(CODE_STORAGE_KEY);
+            activeSessionCode = null;
+            return; // Don't auto-retry
+        }
+
         // Auto-retry after 4 seconds with the same code (don't generate a new one)
         setTimeout(() => {
             if (activeSessionCode && activeServerHost) {
