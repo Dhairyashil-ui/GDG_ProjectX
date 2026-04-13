@@ -294,7 +294,7 @@ function checkFallbackState() {
     const timeSinceLastFrame = Date.now() - lastFrameTime;
     latencyCalc.textContent = `${Math.floor(timeSinceLastFrame / 1000)}s ago`;
 
-    if (timeSinceLastFrame > 5000) {
+    if (timeSinceLastFrame > 35000) {
         reconnectingOverlay.classList.replace('opacity-0', 'opacity-100');
         reconnectingOverlay.classList.remove('pointer-events-none');
     }

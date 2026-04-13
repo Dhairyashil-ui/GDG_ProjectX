@@ -188,41 +188,62 @@ async def websocket_camera(websocket: WebSocket, code: str):
     session.touch()
     logger.info(f"[{code}] Camera connected. Total cams: {len(session.camera_connections)}")
 
-    try:
-        while True:
-            data = await websocket.receive_bytes()
-            
-            # Fast-forward / Drain queue to drop old frames and avoid lag accumulation!
-            while True:
-                try:
-                    # Very short timeout just to check if there's more data in buffer
-                    next_data = await asyncio.wait_for(websocket.receive_bytes(), timeout=0.001)
-                    data = next_data
-                except asyncio.TimeoutError:
-                    # No more immediate frames waiting, process the freshest one
-                    break
-                except WebSocketDisconnect:
-                    raise
+    # 450 frames represents ~30 seconds of video at 15 FPS
+    frame_queue = asyncio.Queue(maxsize=450)
 
-            session.touch()
-            try:
-                # Offload OpenCV/YOLO to a threadpool to unlock the event loop
-                result_payload = await asyncio.to_thread(process_frame, data)
+    async def receive_worker():
+        try:
+            while True:
+                data = await websocket.receive_bytes()
+                session.touch()
                 
-                payload_str = json.dumps(result_payload)
-                dead = []
-                for dash_ws in session.dashboard_connections:
+                # If queue is full (we are >30s behind), "cover the loss" by dropping the absolute oldest frame
+                if frame_queue.full():
                     try:
-                        await dash_ws.send_text(payload_str)
-                    except Exception:
-                        dead.append(dash_ws)
-                for d in dead:
-                    session.dashboard_connections.remove(d)
-            except Exception as e:
-                logger.error(f"[{code}] Inference error: {e}")
-    except WebSocketDisconnect:
-        session.camera_connections.remove(websocket)
-        logger.info(f"[{code}] Camera disconnected.")
+                        frame_queue.get_nowait()
+                    except asyncio.QueueEmpty:
+                        pass
+                await frame_queue.put(data)
+        except WebSocketDisconnect:
+            pass
+        except Exception as e:
+            logger.error(f"[{code}] Receive worker error: {e}")
+
+    async def process_worker():
+        try:
+            while True:
+                data = await frame_queue.get()
+                try:
+                    # Offload to thread so async loop isn't blocked
+                    result_payload = await asyncio.to_thread(process_frame, data)
+                    
+                    payload_str = json.dumps(result_payload)
+                    dead = []
+                    for dash_ws in session.dashboard_connections:
+                        try:
+                            await dash_ws.send_text(payload_str)
+                        except Exception:
+                            dead.append(dash_ws)
+                    for d in dead:
+                        session.dashboard_connections.remove(d)
+                except Exception as e:
+                    logger.error(f"[{code}] Inference error: {e}")
+        except asyncio.CancelledError:
+            pass
+        except Exception as e:
+            logger.error(f"[{code}] Process worker error: {e}")
+
+    receive_task = asyncio.create_task(receive_worker())
+    process_task = asyncio.create_task(process_worker())
+
+    # The connection stays alive until the camera disconnects (receive_task finishes)
+    await receive_task
+    
+    # Gracefully shut down the processing
+    process_task.cancel()
+
+    session.camera_connections.remove(websocket)
+    logger.info(f"[{code}] Camera disconnected.")
 
 
 # ── WebSocket: Dashboard (Web Browser) ────────────────────────────────────────
