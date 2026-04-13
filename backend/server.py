@@ -114,6 +114,29 @@ async def session_exists(code: str):
 async def health():
     return {"status": "ok", "active_sessions": len(sessions)}
 
+@app.delete("/session/{code}")
+async def delete_session(code: str):
+    """Explicitly terminate a session and drop all connected clients instantly."""
+    code = code.upper()
+    if code in sessions:
+        session = sessions[code]
+        # Drop cameras
+        for cam_ws in session.camera_connections:
+            try:
+                await cam_ws.close(code=4404, reason="Session terminated explicitly")
+            except Exception:
+                pass
+        # Drop dashboards
+        for dash_ws in session.dashboard_connections:
+            try:
+                await dash_ws.close(code=4404, reason="Session terminated explicitly")
+            except Exception:
+                pass
+        del sessions[code]
+        logger.info(f"Session {code} instantly terminated by user request.")
+        return {"status": "deleted"}
+    return {"status": "not_found"}
+
 
 # ── Frame processing ───────────────────────────────────────────────────────────
 def process_frame(frame_bytes: bytes) -> Dict:
@@ -168,9 +191,24 @@ async def websocket_camera(websocket: WebSocket, code: str):
     try:
         while True:
             data = await websocket.receive_bytes()
+            
+            # Fast-forward / Drain queue to drop old frames and avoid lag accumulation!
+            while True:
+                try:
+                    # Very short timeout just to check if there's more data in buffer
+                    next_data = await asyncio.wait_for(websocket.receive_bytes(), timeout=0.001)
+                    data = next_data
+                except asyncio.TimeoutError:
+                    # No more immediate frames waiting, process the freshest one
+                    break
+                except WebSocketDisconnect:
+                    raise
+
             session.touch()
             try:
-                result_payload = process_frame(data)
+                # Offload OpenCV/YOLO to a threadpool to unlock the event loop
+                result_payload = await asyncio.to_thread(process_frame, data)
+                
                 payload_str = json.dumps(result_payload)
                 dead = []
                 for dash_ws in session.dashboard_connections:

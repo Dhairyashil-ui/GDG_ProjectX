@@ -65,7 +65,16 @@ async function createNewSession() {
     activeServerHost = host;
     document.getElementById('serverUrlInput').value = host;
 
-    // Close any existing WS
+    // Terminate old session explicitly on the backend before switching
+    if (activeSessionCode) {
+        try {
+            fetch(`${getHttpBase(host)}/session/${activeSessionCode}`, { method: 'DELETE' });
+        } catch (e) {
+            console.warn("Failed to delete old session.");
+        }
+    }
+
+    // Close any existing WS locally
     if (ws) { ws.close(); ws = null; }
 
     // Show spinner on button

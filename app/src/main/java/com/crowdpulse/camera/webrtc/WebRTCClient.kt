@@ -44,7 +44,8 @@ class WebRTCClient(private val context: Context, private val onConnectionStateCh
     fun setSession(host: String, code: String) {
         setServerHost(host)
         sessionCode = code.uppercase()
-        webSocket?.close(1000, "Session Changed")
+        // Use cancel() to abruptly kill the socket rather than waiting for a graceful close handshake
+        webSocket?.cancel()
         isConnected = false
         onConnectionStateChanged(false)
         connectWebSocket()
