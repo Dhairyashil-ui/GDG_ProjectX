@@ -120,20 +120,12 @@ fun MainScreen(
                         singleLine = true,
                         supportingText = { Text("Your Render/ngrok URL (no https://)."  ) }
                     )
-                    OutlinedTextField(
-                        value = codeInput,
-                        onValueChange = { codeInput = it.uppercase().take(6) },
-                        label = { Text("6-Character Code") },
-                        placeholder = { Text("e.g. XK92PL") },
-                        singleLine = true,
-                        supportingText = { Text("Get this code from the CrowdPulse web dashboard.") }
-                    )
                 }
             },
             confirmButton = {
                 TextButton(onClick = {
-                    if (codeInput.length == 6 && hostInput.isNotBlank()) {
-                        onSessionChanged(hostInput, codeInput)
+                    if (hostInput.isNotBlank()) {
+                        onSessionChanged(hostInput, sessionCode)
                         showSettingsDialog = false
                     }
                 }) { Text("Connect", color = PrimaryAccent, fontWeight = FontWeight.Bold) }
@@ -319,7 +311,7 @@ fun MainScreen(
                             .padding(8.dp)
                     ) {
                         MetricLabel("FPS", "$fps")
-                        MetricLabel("QUAL", "$quality%")
+                        MetricLabel("LIMIT", "10")
                     }
 
                     // Timer top-right
@@ -359,7 +351,7 @@ fun MainScreen(
             ) {
                 StatCard("UPTIME",  uptimeStr,          modifier = Modifier.weight(1f), accentColor = PrimaryAccent)
                 StatCard("FRAMES",  "$frameCount",      modifier = Modifier.weight(1f), accentColor = SecondaryAccent)
-                StatCard("QUALITY", if (quality > 0) "$quality%" else "--", modifier = Modifier.weight(1f), accentColor = SuccessGreen)
+                StatCard("CODE",    sessionCode,        modifier = Modifier.weight(1f), accentColor = SuccessGreen)
             }
 
             Spacer(Modifier.height(28.dp))
@@ -424,8 +416,7 @@ fun MainScreen(
                 QuickActionButton(icon = Icons.Outlined.FlipCameraAndroid, label = "Flip", onClick = onFlipCamera)
                 QuickActionButton(icon = Icons.Outlined.FlashOn,          label = "Flash", onClick = onToggleFlash)
                 QuickActionButton(icon = Icons.Outlined.HighQuality,      label = "Quality")
-                QuickActionButton(icon = Icons.Outlined.Settings,         label = "Session", onClick = {
-                    codeInput = sessionCode
+                QuickActionButton(icon = Icons.Outlined.Settings,         label = "Host", onClick = {
                     hostInput = serverHost
                     showSettingsDialog = true
                 })

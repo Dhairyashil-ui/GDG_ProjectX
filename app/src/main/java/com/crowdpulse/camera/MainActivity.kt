@@ -73,16 +73,23 @@ class MainActivity : ComponentActivity() {
 
         val prefs = getSharedPreferences("AppPrefs", Context.MODE_PRIVATE)
         val savedCode = prefs.getString("session_code", "") ?: ""
-        val savedHost = prefs.getString("server_host", "") ?: ""
-        sessionCode.value = savedCode
+        val finalCode = if (savedCode.isNotBlank()) savedCode else {
+            val allowedChars = ('A'..'Z') + ('0'..'9')
+            val generated = (1..6).map { allowedChars.random() }.joinToString("")
+            prefs.edit().putString("session_code", generated).apply()
+            generated
+        }
+        val savedHost = prefs.getString("server_host", "10.0.2.2:8000") ?: "10.0.2.2:8000"
+        
+        sessionCode.value = finalCode
         serverHost.value = savedHost
 
         authManager         = AuthManager(this)
         webrtcClient        = WebRTCClient(this) { connected ->
             isConnected.value = connected
         }
-        if (savedCode.isNotBlank() && savedHost.isNotBlank()) {
-            webrtcClient.setSession(savedHost, savedCode)
+        if (finalCode.isNotBlank() && savedHost.isNotBlank()) {
+            webrtcClient.setSession(savedHost, finalCode)
         }
         
         optimizationManager = OptimizationManager(this)

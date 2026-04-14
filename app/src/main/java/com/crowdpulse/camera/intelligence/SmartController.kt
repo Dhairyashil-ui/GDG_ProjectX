@@ -15,11 +15,10 @@ import java.util.concurrent.atomic.AtomicBoolean
  */
 class SmartController(private val onFrameReadyToSend: (ByteArray) -> Unit) {
 
-    private var previousYPlane: ByteArray? = null
     private val scope = CoroutineScope(Dispatchers.Default)
     
     // Adaptive controls
-    var currentFpsTarget = 15
+    var currentFpsTarget = 10
     private var lastFrameTimeMs = 0L
     private var lastSentFrameTimeMs = 0L
     private val isProcessing = AtomicBoolean(false)
@@ -37,27 +36,15 @@ class SmartController(private val onFrameReadyToSend: (ByteArray) -> Unit) {
 
         scope.launch {
             try {
-                // 1. Edge Processing: Motion Detection
-                val (hasMotion, newYPlane) = ImageUtils.hasMotion(image, previousYPlane, threshold = 12)
-                previousYPlane = newYPlane
-
+                // Compress directly and send
                 val timeSinceLastSend = currentTime - lastSentFrameTimeMs
-
-                if (hasMotion || timeSinceLastSend > 1500) { // Send at least every 1.5s to prevent UI timeout
-                    if (!hasMotion) {
-                        Log.d("SmartController", "Sending heartbeat frame (no motion).")
-                    } else {
-                        Log.d("SmartController", "Motion detected! Processing frame for transmission.")
-                    }
-                    lastSentFrameTimeMs = currentTime
-                    // 2. Resize to max 640x480 & Compress to 30-40% 
-                    val jpegBytes = ImageUtils.yuv420ToJpeg(image, 640, 480, 35)
-                    
-                    withContext(Dispatchers.Main) {
-                        onFrameReadyToSend(jpegBytes)
-                    }
-                } else {
-                    // Drop frame to save bandwidth based on lack of motion (Threshold cut)
+                lastSentFrameTimeMs = currentTime
+                
+                // Resize to max 640x480 & Compress to 35%
+                val jpegBytes = ImageUtils.yuv420ToJpeg(image, 640, 480, 35)
+                
+                withContext(Dispatchers.Main) {
+                    onFrameReadyToSend(jpegBytes)
                 }
             } catch (e: Exception) {
                 Log.e("SmartController", "Error processing frame", e)

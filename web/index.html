@@ -72,7 +72,7 @@
                 <h1 class="text-3xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-blue-600 to-indigo-600">CrowdPulse</h1>
                 <p class="text-slate-500 text-sm mt-1">Intelligence at Scale • Live Dashboard</p>
             </div>
-            <!-- Server URL bar + New Session -->
+            <!-- Server URL bar + Connect -->
             <div class="flex flex-wrap items-center gap-2">
                 <input
                     id="serverUrlInput"
@@ -80,15 +80,22 @@
                     placeholder="e.g. crowdpulse.onrender.com"
                     class="text-sm px-3 py-2 rounded-xl border border-slate-300 bg-white/80 text-slate-700 w-56 focus:outline-none focus:ring-2 focus:ring-blue-400"
                 />
+                <input
+                    id="sessionCodeInput"
+                    type="text"
+                    placeholder="6-Char Code"
+                    maxlength="6"
+                    class="text-sm px-3 py-2 rounded-xl border border-slate-300 bg-white/80 text-slate-700 w-32 uppercase focus:outline-none focus:ring-2 focus:ring-blue-400"
+                />
                 <button
-                    id="newSessionBtn"
-                    onclick="createNewSession()"
+                    id="connectBtn"
+                    onclick="connectFromUI()"
                     class="px-4 py-2 rounded-xl bg-gradient-to-r from-indigo-600 to-blue-600 text-white text-sm font-semibold hover:opacity-90 transition flex items-center gap-2 shadow-md"
                 >
                     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>
                     </svg>
-                    New Session
+                    Connect
                 </button>
                 <div id="connectionStatus" class="flex items-center gap-2 px-4 py-2 rounded-full bg-slate-200 text-slate-600 font-semibold text-sm transition-colors">
                     <div id="statusDot" class="w-3 h-3 rounded-full bg-slate-400"></div>
@@ -97,36 +104,11 @@
             </div>
         </header>
 
-        <!-- ── Session Code Panel ─────────────────────────────────── -->
-        <div id="sessionPanel" class="glass-panel rounded-2xl p-6 hidden">
-            <div class="flex flex-wrap items-center justify-between gap-6">
-
-                <!-- Left: code + copy -->
-                <div class="flex flex-col gap-3">
-                    <p class="text-sm font-semibold text-slate-500 uppercase tracking-widest">Session Code</p>
-                    <div id="codeDisplay" class="flex gap-2"></div>
-                    <div class="flex gap-2 items-center">
-                        <button
-                            id="copyBtn"
-                            onclick="copyCode()"
-                            class="flex items-center gap-1.5 px-4 py-2 rounded-xl border border-blue-200 bg-blue-50 text-blue-700 text-sm font-semibold hover:bg-blue-100 transition"
-                        >
-                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                                    d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/>
-                            </svg>
-                            Copy Code
-                        </button>
-                        <span class="text-xs text-slate-400">Expires in 24h</span>
-                    </div>
-                    <p class="text-xs text-slate-500 max-w-xs">Enter this code in the <span class="font-semibold text-indigo-600">CrowdPulse mobile app</span> to start streaming from anywhere.</p>
-                </div>
-
-                <!-- Right: QR code -->
-                <div class="flex flex-col items-center gap-2">
-                    <div id="qrCanvas" class="rounded-xl border border-slate-200 shadow-sm bg-white p-1" style="width:120px;height:120px;"></div>
-                    <p class="text-xs text-slate-400">Scan to connect</p>
-                </div>
+        <!-- ── Session Code instructions ─────────────────────────────────── -->
+        <div id="sessionInstructions" class="glass-panel rounded-2xl p-6 hidden">
+            <div class="flex flex-col gap-2">
+                <p class="text-sm font-semibold text-slate-500 uppercase tracking-widest">Connection Live</p>
+                <p class="text-xs text-slate-500 max-w-lg">You are now connected to the Android camera feed for session <span id="connectedSessionCode" class="font-bold text-indigo-600"></span>.</p>
             </div>
         </div>
         <!-- ──────────────────────────────────────────────────────── -->

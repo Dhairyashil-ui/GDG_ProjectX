@@ -16,12 +16,9 @@ const alertMessage       = document.getElementById('alertMessage');
 const statusText         = document.getElementById('statusText');
 const statusDot          = document.getElementById('statusDot');
 const alertSound         = document.getElementById('alertSound');
-const sessionPanel       = document.getElementById('sessionPanel');
-const codeDisplay        = document.getElementById('codeDisplay');
-const qrCanvas           = document.getElementById('qrCanvas');
-const currentSessionCode = document.getElementById('currentSessionCode');
-const newSessionBtn      = document.getElementById('newSessionBtn');
-const copyBtn            = document.getElementById('copyBtn');
+const sessionInstructions = document.getElementById('sessionInstructions');
+const connectedSessionCode= document.getElementById('connectedSessionCode');
+const currentSessionCode  = document.getElementById('currentSessionCode');
 
 // ── State ───────────────────────────────────────────────────────────────────
 let ws;
@@ -52,109 +49,23 @@ function getWsBase(host) {
     return isLocal ? `ws://${host}` : `wss://${host}`;
 }
 
-// ── Session creation ─────────────────────────────────────────────────────────
-async function createNewSession() {
+// ── UI Connection ─────────────────────────────────────────────────────────
+function connectFromUI() {
     const host = getServerHost();
-    if (!host) {
-        alert('Please enter the backend server URL first.');
-        return;
-    }
+    const code = document.getElementById('sessionCodeInput').value.trim().toUpperCase();
 
-    // Save & persist the host
+    if (!host) { alert('Please enter the backend server URL first.'); return; }
+    if (code.length < 6) { alert('Please enter a valid 6-char session code.'); return; }
+
     localStorage.setItem(STORAGE_KEY, host);
-    activeServerHost = host;
-    document.getElementById('serverUrlInput').value = host;
+    localStorage.setItem(CODE_STORAGE_KEY, code);
 
-    // Terminate old session explicitly on the backend before switching
-    if (activeSessionCode) {
-        try {
-            fetch(`${getHttpBase(host)}/session/${activeSessionCode}`, { method: 'DELETE' });
-        } catch (e) {
-            console.warn("Failed to delete old session.");
-        }
-    }
-
-    // Close any existing WS locally
-    if (ws) { ws.close(); ws = null; }
-
-    // Show spinner on button
-    newSessionBtn.disabled = true;
-    newSessionBtn.innerHTML = `
-        <svg class="w-4 h-4 animate-spin-slow" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
-        </svg>
-        Creating...`;
-
-    try {
-        const res = await fetch(`${getHttpBase(host)}/session/create`, { method: 'POST' });
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const data = await res.json();
-        const code = data.code;
-
-        activeSessionCode = code;
-        localStorage.setItem(CODE_STORAGE_KEY, code);
-
-        showSessionCode(code);
-        connectToDashboard(host, code);
-
-    } catch (err) {
-        console.error('Session creation failed', err);
-        alert(`Failed to reach server at "${host}".\n\nMake sure the backend is running and the URL is correct.`);
-    } finally {
-        newSessionBtn.disabled = false;
-        newSessionBtn.innerHTML = `
-            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
-            </svg>
-            New Session`;
-    }
-}
-
-// ── Show the 6-char code visually ─────────────────────────────────────────────
-function showSessionCode(code) {
-    // Render each char as a styled box
-    codeDisplay.innerHTML = '';
-    for (const ch of code) {
-        const span = document.createElement('span');
-        span.className = 'code-char animate-slide-down';
-        span.textContent = ch;
-        codeDisplay.appendChild(span);
-    }
-
-    // Update sidebar badge
+    // Show session connection success
+    sessionInstructions.classList.remove('hidden');
+    connectedSessionCode.textContent = code;
     currentSessionCode.textContent = code;
 
-    // Generate QR code using qrcodejs (new QRCode(element, opts))
-    qrCanvas.innerHTML = '';          // clear any previous QR
-    new QRCode(qrCanvas, {
-        text: code,
-        width: 112,
-        height: 112,
-        colorDark: '#1e3a8a',
-        colorLight: '#eff6ff',
-        correctLevel: QRCode.CorrectLevel.M
-    });
-
-    // Show panel
-    sessionPanel.classList.remove('hidden');
-}
-
-// ── Copy code to clipboard ───────────────────────────────────────────────────
-function copyCode() {
-    if (!activeSessionCode) return;
-    navigator.clipboard.writeText(activeSessionCode).then(() => {
-        copyBtn.classList.add('copy-btn-success');
-        copyBtn.textContent = '✓ Copied!';
-        setTimeout(() => {
-            copyBtn.classList.remove('copy-btn-success');
-            copyBtn.innerHTML = `
-                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                        d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/>
-                </svg>
-                Copy Code`;
-        }, 2000);
-    });
+    connectToDashboard(host, code);
 }
 
 // ── WebSocket connection (code-scoped) ────────────────────────────────────────
@@ -204,23 +115,30 @@ function connectToDashboard(host, code) {
     };
 
     ws.onmessage = (event) => {
-        const data = JSON.parse(event.data);
-        updateDashboard(data);
+        if (typeof event.data === "string") {
+            const data = JSON.parse(event.data);
+            updateDashboard(data);
+        } else if (event.data instanceof Blob) {
+            // Binary payload
+            if (window.previousImageUrl) {
+                URL.revokeObjectURL(window.previousImageUrl);
+            }
+            const currentImageUrl = URL.createObjectURL(event.data);
+            videoStream.src = currentImageUrl;
+            videoStream.classList.remove('hidden');
+            noSignal.classList.add('hidden');
+            window.previousImageUrl = currentImageUrl;
+            
+            // Ping UI
+            reconnectingOverlay.classList.replace('opacity-100', 'opacity-0');
+            reconnectingOverlay.classList.add('pointer-events-none');
+            lastFrameTime = Date.now();
+        }
     };
 }
 
 // ── Dashboard update ─────────────────────────────────────────────────────────
 function updateDashboard(data) {
-    lastFrameTime = Date.now();
-    reconnectingOverlay.classList.replace('opacity-100', 'opacity-0');
-    reconnectingOverlay.classList.add('pointer-events-none');
-    
-    if (data.image_b64) {
-        videoStream.src = "data:image/jpeg;base64," + data.image_b64;
-        videoStream.classList.remove('hidden');
-        noSignal.classList.add('hidden');
-    }
-
     peopleCount.textContent = data.count;
 
     const d = new Date();
@@ -307,9 +225,10 @@ const savedCode = localStorage.getItem(CODE_STORAGE_KEY);
 if (savedHost) {
     document.getElementById('serverUrlInput').value = savedHost;
 }
+if (savedCode) {
+    document.getElementById('sessionCodeInput').value = savedCode;
+}
+
 if (savedHost && savedCode) {
-    // Restore the UI but let the user click "New Session" for a fresh code,
-    // or auto-reconnect if the session might still be alive.
-    showSessionCode(savedCode);
-    connectToDashboard(savedHost, savedCode);
+    connectFromUI();
 }

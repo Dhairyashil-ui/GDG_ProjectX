@@ -180,16 +180,19 @@ async def websocket_camera(websocket: WebSocket, code: str):
     code = code.upper()
     session = get_session(code)
     if session is None:
-        await websocket.close(code=4404, reason="Invalid or expired session code")
-        return
+        # Auto-create session if it doesn't exist
+        sessions[code] = Session(code)
+        session = sessions[code]
+        logger.info(f"[{code}] Session auto-created from camera device.")
 
     await websocket.accept()
     session.camera_connections.append(websocket)
     session.touch()
     logger.info(f"[{code}] Camera connected. Total cams: {len(session.camera_connections)}")
 
-    # 450 frames represents ~30 seconds of video at 15 FPS
-    frame_queue = asyncio.Queue(maxsize=450)
+    # Drop 30-Second Bounded Buffer - use latest frame replacement pipeline
+    processing_state = {"latest_frame": None}
+    new_frame_event = asyncio.Event()
 
     async def receive_worker():
         try:
@@ -197,13 +200,9 @@ async def websocket_camera(websocket: WebSocket, code: str):
                 data = await websocket.receive_bytes()
                 session.touch()
                 
-                # If queue is full (we are >30s behind), "cover the loss" by dropping the absolute oldest frame
-                if frame_queue.full():
-                    try:
-                        frame_queue.get_nowait()
-                    except asyncio.QueueEmpty:
-                        pass
-                await frame_queue.put(data)
+                # If we're busy, this simply overwrites the old un-processed frame
+                processing_state["latest_frame"] = data
+                new_frame_event.set()
         except WebSocketDisconnect:
             pass
         except Exception as e:
@@ -212,16 +211,30 @@ async def websocket_camera(websocket: WebSocket, code: str):
     async def process_worker():
         try:
             while True:
-                data = await frame_queue.get()
+                await new_frame_event.wait()
+                data = processing_state["latest_frame"]
+                processing_state["latest_frame"] = None
+                new_frame_event.clear()
+
+                if data is None:
+                    continue
+
                 try:
                     # Offload to thread so async loop isn't blocked
                     result_payload = await asyncio.to_thread(process_frame, data)
+                    
+                    # Split into JSON and Binary
+                    jpeg_bytes = base64.b64decode(result_payload["image_b64"])
+                    del result_payload["image_b64"] # Remove heavy string
                     
                     payload_str = json.dumps(result_payload)
                     dead = []
                     for dash_ws in session.dashboard_connections:
                         try:
+                            # Send JSON stats first
                             await dash_ws.send_text(payload_str)
+                            # Immediently follow up with raw binary blob
+                            await dash_ws.send_bytes(jpeg_bytes)
                         except Exception:
                             dead.append(dash_ws)
                     for d in dead:
