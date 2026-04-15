@@ -1,6 +1,7 @@
 @file:OptIn(ExperimentalMaterial3Api::class)
 package com.crowdpulse.camera.ui
 
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
@@ -13,20 +14,22 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.drawBehind
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.*
-import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.draw.scale
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.crowdpulse.camera.R
 import com.crowdpulse.camera.ui.theme.*
 import kotlinx.coroutines.delay
 import java.util.concurrent.TimeUnit
-import kotlin.math.sin
 
 @Composable
 fun MainScreen(
@@ -42,11 +45,10 @@ fun MainScreen(
     serverHost: String = "",
     onSessionChanged: (host: String, code: String) -> Unit = { _, _ -> }
 ) {
-    // ── Stats counters ─────────────────────────────────────────────────────────
-    var frameCount  by remember { mutableIntStateOf(0) }
-    var uptimeMs    by remember { mutableLongStateOf(0L) }
-    var fps         by remember { mutableIntStateOf(0) }
-    var quality     by remember { mutableIntStateOf(0) }
+    // ── Stats counters ──────────────────────────────────────────────────────────
+    var frameCount by remember { mutableIntStateOf(0) }
+    var uptimeMs   by remember { mutableLongStateOf(0L) }
+    var fps        by remember { mutableIntStateOf(0) }
 
     LaunchedEffect(isStreaming) {
         if (isStreaming) {
@@ -61,10 +63,9 @@ fun MainScreen(
                 fps = ((frameCount - lastFrame).toFloat() / ((now - lastTs) / 1000f)).toInt().coerceIn(0, 60)
                 lastFrame = frameCount
                 lastTs = now
-                quality = (85..98).random()
             }
         } else {
-            frameCount = 0; uptimeMs = 0L; fps = 0; quality = 0
+            frameCount = 0; uptimeMs = 0L; fps = 0
         }
     }
 
@@ -75,133 +76,147 @@ fun MainScreen(
         if (h > 0) "%02d:%02d:%02d".format(h, m, s) else "%02d:%02d".format(m, s)
     }
 
-    // ── Pulse animation for stream button ─────────────────────────────────────
-    val infiniteTransition = rememberInfiniteTransition(label = "home")
-    val pulseScale by infiniteTransition.animateFloat(
-        initialValue = 1f, targetValue = 1.18f,
-        animationSpec = infiniteRepeatable(tween(900, easing = EaseInOutSine), RepeatMode.Reverse),
-        label = "pulse"
-    )
-    val pulseAlpha by infiniteTransition.animateFloat(
-        initialValue = 0.4f, targetValue = 0f,
-        animationSpec = infiniteRepeatable(tween(900, easing = EaseOutSine), RepeatMode.Restart),
-        label = "pAlpha"
-    )
-
-    // ── Status glow ────────────────────────────────────────────────────────────
-    val statusGlow by infiniteTransition.animateFloat(
-        initialValue = 0.6f, targetValue = 1f,
-        animationSpec = infiniteRepeatable(tween(1200, easing = EaseInOutSine), RepeatMode.Reverse),
-        label = "statusGlow"
-    )
-
-    // ── Waveform when streaming ────────────────────────────────────────────────
-    val wavePhase by infiniteTransition.animateFloat(
-        initialValue = 0f, targetValue = (2 * Math.PI).toFloat(),
-        animationSpec = infiniteRepeatable(tween(1500, easing = LinearEasing)),
-        label = "wave"
-    )
-
+    // ── Settings Dialog ─────────────────────────────────────────────────────────
     var showSettingsDialog by remember { mutableStateOf(false) }
-    var codeInput by remember { mutableStateOf(sessionCode) }
     var hostInput by remember { mutableStateOf(serverHost) }
 
     if (showSettingsDialog) {
         AlertDialog(
             onDismissRequest = { showSettingsDialog = false },
-            title = { Text("Connect to Session", fontWeight = FontWeight.Bold) },
+            shape = RoundedCornerShape(24.dp),
+            containerColor = MaterialTheme.colorScheme.surface,
+            tonalElevation = 8.dp,
+            icon = {
+                Icon(
+                    Icons.Outlined.Settings,
+                    contentDescription = null,
+                    tint = PrimaryAccent,
+                    modifier = Modifier.size(28.dp)
+                )
+            },
+            title = {
+                Text(
+                    "Connection Settings",
+                    fontWeight = FontWeight.Bold,
+                    style = MaterialTheme.typography.headlineSmall
+                )
+            },
             text = {
-                Column(verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(8.dp)) {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Text(
+                        "Configure the backend host URL for your Croudify server.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
                     OutlinedTextField(
                         value = hostInput,
                         onValueChange = { hostInput = it.trim() },
-                        label = { Text("Backend Host") },
-                        placeholder = { Text("e.g. crowdpulse.onrender.com") },
+                        label = { Text("Backend Host URL") },
+                        leadingIcon = { Icon(Icons.Outlined.Cloud, contentDescription = null) },
                         singleLine = true,
-                        supportingText = { Text("Your Render/ngrok URL (no https://)."  ) }
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier.fillMaxWidth()
                     )
                 }
             },
             confirmButton = {
-                TextButton(onClick = {
-                    if (hostInput.isNotBlank()) {
-                        onSessionChanged(hostInput, sessionCode)
-                        showSettingsDialog = false
-                    }
-                }) { Text("Connect", color = PrimaryAccent, fontWeight = FontWeight.Bold) }
+                Button(
+                    onClick = {
+                        if (hostInput.isNotBlank()) {
+                            onSessionChanged(hostInput, sessionCode)
+                            showSettingsDialog = false
+                        }
+                    },
+                    shape = RoundedCornerShape(12.dp)
+                ) { Text("Save", fontWeight = FontWeight.SemiBold) }
             },
             dismissButton = {
-                TextButton(onClick = { showSettingsDialog = false }) { Text("Cancel", color = TextSubtle) }
-            },
-            containerColor = SurfaceElevated
+                TextButton(onClick = { showSettingsDialog = false }) { Text("Cancel") }
+            }
         )
     }
 
+    // ── FAB pulse animation ─────────────────────────────────────────────────────
+    val fabScale by animateFloatAsState(
+        targetValue = if (isStreaming) 1f else 1f,
+        animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy),
+        label = "fabScale"
+    )
+    val fabColor by animateColorAsState(
+        targetValue = if (isStreaming) DangerRed else PrimaryAccent,
+        animationSpec = tween(300),
+        label = "fabColor"
+    )
+
     Scaffold(
-        containerColor = BackgroundLight,
+        containerColor = Color.White,
         topBar = {
             TopAppBar(
                 title = {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        // Status dot
-                        Box(
+                        Image(
+                            painter = painterResource(id = R.drawable.app_logo),
+                            contentDescription = "App Logo",
                             modifier = Modifier
-                                .size(8.dp)
-                                .clip(CircleShape)
-                                .background(
-                                    if (isConnected) SuccessGreen.copy(alpha = statusGlow)
-                                    else DangerRed.copy(alpha = statusGlow)
-                                )
+                                .size(28.dp)
+                                .clip(RoundedCornerShape(6.dp))
                         )
-                        Spacer(Modifier.width(8.dp))
+                        Spacer(Modifier.width(10.dp))
                         Text(
-                            "CrowdPulse",
+                            "Croudify",
                             style = MaterialTheme.typography.titleLarge,
-                            color = TextPrimary,
-                            fontWeight = FontWeight.Bold
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onSurface
                         )
                     }
                 },
                 actions = {
-                    // Status badge
+                    // Connection chip
                     Surface(
-                        shape = CircleShape,
+                        shape = RoundedCornerShape(20.dp),
                         color = if (isConnected) SuccessGlow else DangerGlow,
                         modifier = Modifier.padding(end = 8.dp)
                     ) {
-                        Text(
-                            text = if (isConnected) "LIVE" else "OFFLINE",
-                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
-                            style = MaterialTheme.typography.labelSmall,
-                            color = if (isConnected) SuccessGreen else DangerRed,
-                            fontWeight = FontWeight.Bold,
-                            letterSpacing = 1.sp
-                        )
+                        Row(
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(6.dp)
+                                    .clip(CircleShape)
+                                    .background(if (isConnected) SuccessGreen else DangerRed)
+                            )
+                            Text(
+                                text = if (isConnected) "Live" else "Offline",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = if (isConnected) SuccessGreen else DangerRed,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
                     }
 
-                    // Profile icon
-                    Box(
-                        modifier = Modifier
-                            .padding(end = 16.dp)
-                            .size(36.dp)
-                            .clip(CircleShape)
-                            .background(
-                                Brush.radialGradient(listOf(PrimaryAccent.copy(alpha = 0.3f), SecondaryAccent.copy(alpha = 0.2f)))
-                            )
-                            .border(1.dp, PrimaryAccent.copy(alpha = 0.4f), CircleShape)
-                            .clickable { onLoginClick() },
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(
-                            text = userEmail?.firstOrNull()?.uppercaseChar()?.toString() ?: "?",
-                            style = MaterialTheme.typography.labelLarge,
-                            color = PrimaryAccent,
-                            fontWeight = FontWeight.Bold
-                        )
+                    // Avatar button
+                    IconButton(onClick = onLoginClick) {
+                        Surface(
+                            shape = CircleShape,
+                            color = PrimaryGlow,
+                            modifier = Modifier.size(36.dp)
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Text(
+                                    text = userEmail?.firstOrNull()?.uppercaseChar()?.toString() ?: "?",
+                                    fontWeight = FontWeight.Bold,
+                                    color = PrimaryAccent,
+                                    fontSize = 15.sp
+                                )
+                            }
+                        }
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = BackgroundLight.copy(alpha = 0.95f),
+                    containerColor = Color.White,
                 )
             )
         }
@@ -209,298 +224,518 @@ fun MainScreen(
         Column(
             modifier = Modifier
                 .fillMaxSize()
+                .verticalScroll(rememberScrollState())
                 .padding(paddingValues)
-                .padding(horizontal = 20.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
+                .padding(horizontal = 16.dp)
+                .padding(bottom = 100.dp), // space for FAB
+            verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            Spacer(Modifier.height(12.dp))
+            Spacer(Modifier.height(4.dp))
 
-            // ── Camera preview card ─────────────────────────────────────────────
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .aspectRatio(4f / 3f)
-                    .clip(RoundedCornerShape(24.dp))
-                    .background(SurfaceElevated)
-                    .let { mod ->
-                        if (isStreaming) mod.border(
-                            width = 1.5.dp,
-                            brush = Brush.linearGradient(
-                                listOf(PrimaryAccent, SecondaryAccent, PrimaryAccent)
-                            ),
-                            shape = RoundedCornerShape(24.dp)
-                        )
-                        else mod.border(1.dp, BorderSubtle, RoundedCornerShape(24.dp))
-                    }
-            ) {
-                // Always render AndroidView for TextureView to have surface ready
-                androidx.compose.ui.viewinterop.AndroidView(
-                    factory = { ctx ->
-                        android.view.TextureView(ctx).apply {
-                            surfaceTextureListener = object : android.view.TextureView.SurfaceTextureListener {
-                                override fun onSurfaceTextureAvailable(st: android.graphics.SurfaceTexture, w: Int, h: Int) {
-                                    st.setDefaultBufferSize(1280, 720)
-                                    onSurfaceAvailable(android.view.Surface(st))
-                                }
-                                override fun onSurfaceTextureSizeChanged(st: android.graphics.SurfaceTexture, w: Int, h: Int) {}
-                                override fun onSurfaceTextureDestroyed(st: android.graphics.SurfaceTexture): Boolean {
-                                    onSurfaceAvailable(null)
-                                    return true
-                                }
-                                override fun onSurfaceTextureUpdated(st: android.graphics.SurfaceTexture) {}
+            // ── Camera Preview Card ────────────────────────────────────────────
+            CameraCard(
+                isStreaming = isStreaming,
+                uptimeStr = uptimeStr,
+                onSurfaceAvailable = onSurfaceAvailable,
+                onFlipCamera = onFlipCamera,
+                onToggleFlash = onToggleFlash
+            )
+
+            // ── Live Stats Row ─────────────────────────────────────────────────
+            LiveStatsRow(isStreaming = isStreaming, fps = fps, frameCount = frameCount)
+
+            // ── Session Info Card ──────────────────────────────────────────────
+            SessionInfoCard(
+                sessionCode = sessionCode,
+                serverHost = serverHost,
+                onSettingsClick = {
+                    hostInput = serverHost
+                    showSettingsDialog = true
+                }
+            )
+
+            // ── Spacer so FAB doesn't overlap ──────────────────────────────────
+            Spacer(Modifier.height(8.dp))
+        }
+
+        // ── Centered FAB ────────────────────────────────────────────────────────
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(bottom = 28.dp),
+            contentAlignment = Alignment.BottomCenter
+        ) {
+            StreamFab(
+                isStreaming = isStreaming,
+                fabColor = fabColor,
+                fabScale = fabScale,
+                onClick = onToggleStream
+            )
+        }
+    }
+}
+
+// ── Camera Preview Card ─────────────────────────────────────────────────────────
+
+@Composable
+private fun CameraCard(
+    isStreaming: Boolean,
+    uptimeStr: String,
+    onSurfaceAvailable: (android.view.Surface?) -> Unit,
+    onFlipCamera: () -> Unit,
+    onToggleFlash: () -> Unit
+) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .aspectRatio(3f / 4f),
+        shape = RoundedCornerShape(28.dp),
+        border = BorderStroke(1.dp, BorderSubtle.copy(alpha = 0.5f)),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+        colors = CardDefaults.cardColors(containerColor = Color(0xFFF2F2F7))
+    ) {
+        Box(modifier = Modifier.fillMaxSize()) {
+            // TextureView for camera feed
+            androidx.compose.ui.viewinterop.AndroidView(
+                factory = { ctx ->
+                    android.view.TextureView(ctx).apply {
+                        surfaceTextureListener = object : android.view.TextureView.SurfaceTextureListener {
+                            override fun onSurfaceTextureAvailable(st: android.graphics.SurfaceTexture, w: Int, h: Int) {
+                                st.setDefaultBufferSize(720, 1280)
+                                onSurfaceAvailable(android.view.Surface(st))
                             }
+                            override fun onSurfaceTextureSizeChanged(st: android.graphics.SurfaceTexture, w: Int, h: Int) {}
+                            override fun onSurfaceTextureDestroyed(st: android.graphics.SurfaceTexture): Boolean {
+                                onSurfaceAvailable(null)
+                                return true
+                            }
+                            override fun onSurfaceTextureUpdated(st: android.graphics.SurfaceTexture) {}
                         }
-                    },
+                    }
+                },
+                modifier = Modifier.fillMaxSize()
+            )
+
+            // Idle overlay
+            if (!isStreaming) {
+                Box(
                     modifier = Modifier
                         .fillMaxSize()
-                        .clip(RoundedCornerShape(24.dp))
-                )
-
-                if (!isStreaming) {
-                    // Background gradient for idle state
-                    Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .background(
-                                Brush.verticalGradient(
-                                    colors = listOf(Color(0xFFF1F3F4), Color(0xFFE8EAED))
+                        .background(
+                            Brush.verticalGradient(
+                                colors = listOf(
+                                    Color(0xEEFFFFFF),
+                                    Color(0xDDFFFFFF)
                                 )
                             )
-                    )
-                    // Idle state
-                    Column(
-                        modifier = Modifier.align(Alignment.Center),
-                        horizontalAlignment = Alignment.CenterHorizontally
-                    ) {
+                        ),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         Box(
                             modifier = Modifier
-                                .size(64.dp)
+                                .size(72.dp)
                                 .clip(CircleShape)
-                                .background(SurfaceCard),
+                                .background(Color.Black.copy(alpha = 0.05f)),
                             contentAlignment = Alignment.Center
                         ) {
                             Icon(
-                                Icons.Filled.CameraAlt,
-                                contentDescription = "Camera",
-                                tint = TextSubtle,
-                                modifier = Modifier.size(30.dp)
+                                Icons.Outlined.VideocamOff,
+                                contentDescription = "Camera Offline",
+                                tint = TextSecondary,
+                                modifier = Modifier.size(36.dp)
                             )
                         }
-                        Spacer(Modifier.height(12.dp))
+                        Spacer(Modifier.height(16.dp))
                         Text(
-                            "Camera Preview",
-                            style = MaterialTheme.typography.titleSmall,
-                            color = TextSubtle
+                            "Camera Standby",
+                            style = MaterialTheme.typography.titleMedium,
+                            color = TextPrimary,
+                            fontWeight = FontWeight.SemiBold
                         )
+                        Spacer(Modifier.height(4.dp))
                         Text(
-                            "Press start to begin streaming",
+                            "Tap \"Start Streaming\" below",
                             style = MaterialTheme.typography.bodySmall,
-                            color = TextSubtle.copy(alpha = 0.6f)
-                        )
-                    }
-                }
-
-                // ── Overlay metrics (top-left) ───────────────────────────────────
-                if (isStreaming) {
-                    Column(
-                        modifier = Modifier
-                            .align(Alignment.TopStart)
-                            .padding(12.dp)
-                            .clip(RoundedCornerShape(8.dp))
-                            .background(Color.Black.copy(alpha = 0.5f))
-                            .padding(8.dp)
-                    ) {
-                        MetricLabel("FPS", "$fps")
-                        MetricLabel("LIMIT", "10")
-                    }
-
-                    // Timer top-right
-                    Row(
-                        modifier = Modifier
-                            .align(Alignment.TopEnd)
-                            .padding(12.dp)
-                            .clip(RoundedCornerShape(8.dp))
-                            .background(DangerRed.copy(alpha = 0.2f))
-                            .border(1.dp, DangerRed.copy(alpha = 0.4f), RoundedCornerShape(8.dp))
-                            .padding(horizontal = 10.dp, vertical = 6.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .size(6.dp)
-                                .clip(CircleShape)
-                                .background(DangerRed)
-                        )
-                        Spacer(Modifier.width(6.dp))
-                        Text(
-                            text = "REC $uptimeStr",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = Color.White,
-                            fontWeight = FontWeight.Bold
+                            color = TextSecondary
                         )
                     }
                 }
             }
 
-            Spacer(Modifier.height(20.dp))
-
-            // ── Stats row ──────────────────────────────────────────────────────
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                StatCard("UPTIME",  uptimeStr,          modifier = Modifier.weight(1f), accentColor = PrimaryAccent)
-                StatCard("FRAMES",  "$frameCount",      modifier = Modifier.weight(1f), accentColor = SecondaryAccent)
-                StatCard("CODE",    sessionCode,        modifier = Modifier.weight(1f), accentColor = SuccessGreen)
-            }
-
-            Spacer(Modifier.height(28.dp))
-
-            // ── Main stream button ─────────────────────────────────────────────
-            Box(contentAlignment = Alignment.Center) {
-                // Pulse ring (only when streaming)
-                if (isStreaming) {
-                    Box(
-                        modifier = Modifier
-                            .size(100.dp)
-                            .graphicsLayer { scaleX = pulseScale; scaleY = pulseScale }
-                            .alpha(pulseAlpha)
-                            .clip(CircleShape)
-                            .background(DangerRed.copy(alpha = 0.3f))
+            // Top gradient scrim
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(80.dp)
+                    .background(
+                        Brush.verticalGradient(
+                            colors = listOf(Color.Black.copy(alpha = 0.55f), Color.Transparent)
+                        )
                     )
-                }
-
-                Box(
-                    modifier = Modifier
-                        .size(80.dp)
-                        .clip(CircleShape)
-                        .background(
-                            if (isStreaming)
-                                Brush.radialGradient(listOf(DangerRed, Color(0xFFB71C1C)))
-                            else
-                                Brush.radialGradient(listOf(PrimaryAccent, PrimaryDim))
-                        )
-                        .border(
-                            width = 2.dp,
-                            color = if (isStreaming) DangerRed.copy(alpha = 0.5f) else PrimaryAccent.copy(alpha = 0.5f),
-                            shape = CircleShape
-                        )
-                        .clickable { onToggleStream() },
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        imageVector = if (isStreaming) Icons.Filled.Stop else Icons.Filled.PlayArrow,
-                        contentDescription = if (isStreaming) "Stop" else "Start",
-                        tint = if (isStreaming) Color.White else Color.White,
-                        modifier = Modifier.size(36.dp)
-                    )
-                }
-            }
-
-            Spacer(Modifier.height(8.dp))
-
-            Text(
-                text = if (isStreaming) "Tap to stop streaming" else "Tap to start streaming",
-                style = MaterialTheme.typography.bodySmall,
-                color = TextSubtle,
-                textAlign = TextAlign.Center
+                    .align(Alignment.TopCenter)
             )
 
-            Spacer(Modifier.height(24.dp))
+            // Bottom gradient scrim
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(72.dp)
+                    .background(
+                        Brush.verticalGradient(
+                            colors = listOf(Color.Transparent, Color.Black.copy(alpha = 0.55f))
+                        )
+                    )
+                    .align(Alignment.BottomCenter)
+            )
 
-            // ── Quick actions ──────────────────────────────────────────────────
+            // REC badge (top-left)
+            if (isStreaming) {
+                RecBadge(
+                    uptimeStr = uptimeStr,
+                    modifier = Modifier.align(Alignment.TopStart).padding(14.dp)
+                )
+            }
+
+            // Camera controls (top-right)
             Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceEvenly
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(14.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                QuickActionButton(icon = Icons.Outlined.FlipCameraAndroid, label = "Flip", onClick = onFlipCamera)
-                QuickActionButton(icon = Icons.Outlined.FlashOn,          label = "Flash", onClick = onToggleFlash)
-                QuickActionButton(icon = Icons.Outlined.HighQuality,      label = "Quality")
-                QuickActionButton(icon = Icons.Outlined.Settings,         label = "Host", onClick = {
-                    hostInput = serverHost
-                    showSettingsDialog = true
-                })
+                CameraOverlayButton(
+                    icon = Icons.Outlined.FlipCameraAndroid,
+                    label = "Flip",
+                    onClick = onFlipCamera
+                )
+                CameraOverlayButton(
+                    icon = Icons.Outlined.FlashOn,
+                    label = "Flash",
+                    onClick = onToggleFlash
+                )
+            }
+
+            // AI label (bottom-left)
+            Row(
+                modifier = Modifier
+                    .align(Alignment.BottomStart)
+                    .padding(14.dp)
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(Color.White.copy(alpha = 0.85f))
+                    .padding(horizontal = 10.dp, vertical = 6.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(5.dp)
+            ) {
+                Icon(
+                    Icons.Filled.AutoAwesome,
+                    contentDescription = null,
+                    tint = PrimaryAccent,
+                    modifier = Modifier.size(14.dp)
+                )
+                Text(
+                    "AI Crowd Analysis",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = TextPrimary,
+                    fontWeight = FontWeight.SemiBold
+                )
             }
         }
     }
 }
 
 @Composable
-private fun MetricLabel(label: String, value: String) {
-    Row(verticalAlignment = Alignment.CenterVertically) {
-        Text(
-            text = "$label ",
-            style = MaterialTheme.typography.labelSmall,
-            color = Color.White.copy(alpha = 0.8f),
-            fontSize = 9.sp
-        )
-        Text(
-            text = value,
-            style = MaterialTheme.typography.labelSmall,
-            color = PrimaryAccent,
-            fontWeight = FontWeight.Bold,
-            fontSize = 10.sp
-        )
-    }
-}
+private fun RecBadge(uptimeStr: String, modifier: Modifier = Modifier) {
+    // Pulsing dot animation
+    val infiniteTransition = rememberInfiniteTransition(label = "recPulse")
+    val dotAlpha by infiniteTransition.animateFloat(
+        initialValue = 1f,
+        targetValue = 0.2f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(700, easing = LinearEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "dotAlpha"
+    )
 
-@Composable
-private fun StatCard(
-    label: String,
-    value: String,
-    modifier: Modifier = Modifier,
-    accentColor: Color = PrimaryAccent
-) {
-    Column(
+    Row(
         modifier = modifier
-            .clip(RoundedCornerShape(16.dp))
-            .background(SurfaceElevated)
-            .border(1.dp, BorderSubtle, RoundedCornerShape(16.dp))
-            .padding(12.dp),
-        horizontalAlignment = Alignment.CenterHorizontally
-    ) {
-        Text(
-            text = value.ifEmpty { "--" },
-            style = MaterialTheme.typography.headlineSmall,
-            color = accentColor,
-            fontWeight = FontWeight.Bold
-        )
-        Spacer(Modifier.height(2.dp))
-        Text(
-            text = label,
-            style = MaterialTheme.typography.labelSmall,
-            color = TextSubtle,
-            letterSpacing = 1.sp
-        )
-    }
-}
-
-@Composable
-private fun QuickActionButton(
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
-    label: String,
-    onClick: () -> Unit = {}
-) {
-    Column(
-        horizontalAlignment = Alignment.CenterHorizontally
+            .clip(RoundedCornerShape(10.dp))
+            .background(Color.White.copy(alpha = 0.85f))
+            .padding(horizontal = 10.dp, vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(6.dp)
     ) {
         Box(
             modifier = Modifier
-                .size(50.dp)
-                .clip(RoundedCornerShape(14.dp))
-                .background(SurfaceElevated)
-                .border(1.dp, BorderSubtle, RoundedCornerShape(14.dp))
-                .clickable { onClick() },
-            contentAlignment = Alignment.Center
+                .size(8.dp)
+                .clip(CircleShape)
+                .background(DangerRed.copy(alpha = dotAlpha))
+        )
+        Text(
+            "REC  $uptimeStr",
+            style = MaterialTheme.typography.labelSmall,
+            color = TextPrimary,
+            fontWeight = FontWeight.Bold,
+            letterSpacing = 0.5.sp
+        )
+    }
+}
+
+@Composable
+private fun CameraOverlayButton(icon: ImageVector, label: String, onClick: () -> Unit) {
+    IconButton(
+        onClick = onClick,
+        modifier = Modifier
+            .size(40.dp)
+            .clip(CircleShape)
+            .background(Color.White.copy(alpha = 0.85f))
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = label,
+            tint = TextPrimary,
+            modifier = Modifier.size(20.dp)
+        )
+    }
+}
+
+// ── Live Stats Row ──────────────────────────────────────────────────────────────
+
+@Composable
+private fun LiveStatsRow(isStreaming: Boolean, fps: Int, frameCount: Int) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        StatChip(
+            icon = Icons.Filled.FiberManualRecord,
+            iconTint = if (isStreaming) SuccessGreen else TextSubtle,
+            label = "Status",
+            value = if (isStreaming) "Streaming" else "Standby",
+            modifier = Modifier.weight(1f)
+        )
+        StatChip(
+            icon = Icons.Outlined.Speed,
+            iconTint = if (isStreaming) PrimaryAccent else TextSubtle,
+            label = "Frame Rate",
+            value = if (isStreaming) "$fps FPS" else "—",
+            modifier = Modifier.weight(1f)
+        )
+        StatChip(
+            icon = Icons.Outlined.PhotoLibrary,
+            iconTint = if (isStreaming) SecondaryAccent else TextSubtle,
+            label = "Frames",
+            value = if (isStreaming) "$frameCount" else "—",
+            modifier = Modifier.weight(1f)
+        )
+    }
+}
+
+@Composable
+private fun StatChip(
+    icon: ImageVector,
+    iconTint: Color,
+    label: String,
+    value: String,
+    modifier: Modifier = Modifier
+) {
+    Surface(
+        modifier = modifier,
+        shape = RoundedCornerShape(18.dp),
+        color = Color.White,
+        border = BorderStroke(1.dp, BorderSubtle.copy(alpha = 0.4f)),
+        shadowElevation = 0.dp,
+        tonalElevation = 0.dp
+    ) {
+        Column(
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 14.dp),
+            horizontalAlignment = Alignment.Start
         ) {
             Icon(
                 imageVector = icon,
-                contentDescription = label,
-                tint = TextSecondary,
-                modifier = Modifier.size(22.dp)
+                contentDescription = null,
+                tint = iconTint,
+                modifier = Modifier.size(18.dp)
+            )
+            Spacer(Modifier.height(8.dp))
+            Text(
+                text = label,
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Spacer(Modifier.height(2.dp))
+            Text(
+                text = value,
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = FontWeight.SemiBold,
+                color = MaterialTheme.colorScheme.onSurface,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
             )
         }
-        Spacer(Modifier.height(4.dp))
-        Text(label, style = MaterialTheme.typography.labelSmall, color = TextSubtle)
+    }
+}
+
+// ── Session Info Card ───────────────────────────────────────────────────────────
+
+@Composable
+private fun SessionInfoCard(
+    sessionCode: String,
+    serverHost: String,
+    onSettingsClick: () -> Unit
+) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(24.dp),
+        color = Color.White,
+        border = BorderStroke(1.dp, BorderSubtle.copy(alpha = 0.4f)),
+        shadowElevation = 0.dp,
+        tonalElevation = 0.dp
+    ) {
+        Column(modifier = Modifier.padding(20.dp)) {
+            // Header row
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(36.dp)
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(PrimaryGlow),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            Icons.Outlined.Link,
+                            contentDescription = null,
+                            tint = PrimaryAccent,
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+                    Text(
+                        "Session Info",
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                }
+                IconButton(
+                    onClick = onSettingsClick,
+                    modifier = Modifier
+                        .size(36.dp)
+                        .clip(CircleShape)
+                        .background(MaterialTheme.colorScheme.background)
+                ) {
+                    Icon(
+                        Icons.Outlined.Edit,
+                        contentDescription = "Edit Settings",
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(16.dp)
+                    )
+                }
+            }
+
+            Spacer(Modifier.height(16.dp))
+            HorizontalDivider(color = BorderSubtle, thickness = 0.5.dp)
+            Spacer(Modifier.height(16.dp))
+
+            // Session Code row
+            SessionInfoRow(
+                icon = Icons.Outlined.QrCode,
+                label = "Session Code",
+                value = sessionCode.ifBlank { "Not set" }
+            )
+
+            Spacer(Modifier.height(14.dp))
+
+            // Host URL row
+            SessionInfoRow(
+                icon = Icons.Outlined.Cloud,
+                label = "Backend Host",
+                value = serverHost.ifBlank { "Not configured" }
+            )
+        }
+    }
+}
+
+@Composable
+private fun SessionInfoRow(icon: ImageVector, label: String, value: String) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = null,
+            tint = PrimaryAccent,
+            modifier = Modifier.size(20.dp)
+        )
+        Column {
+            Text(
+                text = label,
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Spacer(Modifier.height(2.dp))
+            Text(
+                text = value,
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = FontWeight.Medium,
+                color = MaterialTheme.colorScheme.onSurface,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
+    }
+}
+
+// ── Stream FAB ──────────────────────────────────────────────────────────────────
+
+@Composable
+private fun StreamFab(
+    isStreaming: Boolean,
+    fabColor: Color,
+    fabScale: Float,
+    onClick: () -> Unit
+) {
+    Box(
+        modifier = Modifier
+            .scale(fabScale)
+            .clip(RoundedCornerShape(20.dp))
+            .background(
+                brush = Brush.horizontalGradient(
+                    colors = if (isStreaming)
+                        listOf(DangerRed, Color(0xFFFF6B6B))
+                    else
+                        listOf(PrimaryAccent, SecondaryAccent)
+                )
+            )
+            .clickable(onClick = onClick)
+            .padding(horizontal = 32.dp, vertical = 16.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Icon(
+                imageVector = if (isStreaming) Icons.Filled.Stop else Icons.Filled.Videocam,
+                contentDescription = null,
+                tint = Color.White,
+                modifier = Modifier.size(22.dp)
+            )
+            Text(
+                text = if (isStreaming) "Stop Streaming" else "Start Streaming",
+                fontWeight = FontWeight.Bold,
+                fontSize = 16.sp,
+                color = Color.White
+            )
+        }
     }
 }

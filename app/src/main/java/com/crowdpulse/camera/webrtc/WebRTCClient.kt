@@ -41,7 +41,7 @@ class WebRTCClient(private val context: Context, private val onConnectionStateCh
      */
     fun setServerHost(host: String) {
         val isLocal = host.startsWith("10.0.") || host.startsWith("192.168.") || host.startsWith("localhost")
-        serverHost = if (isLocal) "$host:8000" else host
+        serverHost = if (isLocal && !host.contains(":")) "$host:8000" else host
         useSecure  = !isLocal
     }
 

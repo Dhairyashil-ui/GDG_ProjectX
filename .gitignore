@@ -13,3 +13,15 @@
 .externalNativeBuild
 .cxx
 local.properties
+
+# Python
+venv/
+__pycache__/
+*.pyc
+
+# Android Output
+*.apk
+app/build/
+
+*.mp4
+*.avi

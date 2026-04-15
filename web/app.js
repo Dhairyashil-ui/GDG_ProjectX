@@ -228,33 +228,33 @@ function updateDashboard(data) {
 
 function applyStatusColor(status) {
     statusLabel.textContent = status;
-    statusBadge.className = "inline-flex w-full justify-center items-center gap-2 px-4 py-3 rounded-xl font-bold transition-colors duration-300";
-    densityCard.className = "glass-panel rounded-2xl p-6 transition-all duration-500 border-2";
+    statusBadge.className = "status-badge w-full transition-colors duration-300";
+    densityCard.className = "bento-card p-6 border-t-[6px] transition-all duration-500";
 
     if (status === "GREEN") {
-        statusIndicator.className = "w-2.5 h-2.5 rounded-full bg-emerald-500";
-        statusBadge.classList.add('bg-emerald-100', 'text-emerald-700');
-        densityCard.classList.add('border-emerald-200');
+        statusIndicator.className = "w-2.5 h-2.5 rounded-full bg-[#10b981]";
+        statusBadge.classList.add('bg-[#ecfdf5]', 'text-[#059669]');
+        densityCard.classList.add('border-t-[#10b981]');
     } else if (status === "YELLOW") {
-        statusIndicator.className = "w-2.5 h-2.5 rounded-full bg-amber-500 animate-pulse";
-        statusBadge.classList.add('bg-amber-100', 'text-amber-700');
-        densityCard.classList.add('border-amber-200');
+        statusIndicator.className = "w-2.5 h-2.5 rounded-full bg-[#f59e0b] animate-pulse";
+        statusBadge.classList.add('bg-[#fffbeb]', 'text-[#d97706]');
+        densityCard.classList.add('border-t-[#f59e0b]');
     } else if (status === "RED") {
-        statusIndicator.className = "w-2.5 h-2.5 rounded-full bg-red-600 animate-ping";
-        statusBadge.classList.add('bg-red-100', 'text-red-700');
-        densityCard.classList.add('border-red-300', 'shadow-lg', 'shadow-red-500/20');
+        statusIndicator.className = "w-2.5 h-2.5 rounded-full bg-[#e11d48] animate-ping";
+        statusBadge.classList.add('bg-[#fff1f2]', 'text-[#be123c]');
+        densityCard.classList.add('border-t-[#e11d48]', 'pulse-red-soft');
     }
 }
 
 function triggerAlert() {
     isAlertActive = true;
-    alertBox.className = "glass-panel rounded-2xl p-6 border-l-4 border-red-500 opacity-100 transition-all duration-300 pulse-red bg-red-50";
-    alertIcon.className = "p-2 rounded-lg bg-red-100 text-red-600 animate-bounce";
-    alertIcon.innerHTML = `<svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg>`;
+    alertBox.className = "bento-card p-6 border border-[#fecdd3] opacity-100 transition-all duration-300 pulse-red-soft bg-[#fff1f2]";
+    alertIcon.className = "w-10 h-10 rounded-full bg-[#ffe4e6] flex items-center justify-center text-[#e11d48] animate-bounce";
+    alertIcon.innerHTML = `<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg>`;
     alertTitle.textContent = "CRITICAL SERVER ALERT";
-    alertTitle.classList.add('text-red-700');
+    alertTitle.className = "font-bold text-[#be123c] text-sm";
     alertMessage.textContent = "High density threshold exceeded for >10 seconds. Dispatching security.";
-    alertMessage.classList.replace('text-slate-500', 'text-red-600');
+    alertMessage.className = "text-xs text-[#e11d48] mt-1 font-bold leading-relaxed";
 
     try {
         alertSound.play().catch(e => console.log("Sound blocked by browser policy"));
@@ -263,13 +263,13 @@ function triggerAlert() {
 
 function clearAlert() {
     isAlertActive = false;
-    alertBox.className = "glass-panel rounded-2xl p-6 border-l-4 border-slate-300 opacity-50 transition-all duration-300";
-    alertIcon.className = "p-2 rounded-lg bg-slate-100 text-slate-400";
-    alertIcon.innerHTML = `<svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>`;
-    alertTitle.textContent = "System Monitoring";
-    alertTitle.classList.remove('text-red-700');
-    alertMessage.textContent = "Density stabilized.";
-    alertMessage.classList.replace('text-red-600', 'text-slate-500');
+    alertBox.className = "bento-card p-6 bg-[#f5f5f7] border border-transparent opacity-60 transition-all duration-300";
+    alertIcon.className = "w-10 h-10 rounded-full bg-[#e8e8ed] flex items-center justify-center text-[#86868b]";
+    alertIcon.innerHTML = `<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>`;
+    alertTitle.textContent = "Threat Monitoring";
+    alertTitle.className = "font-bold text-[#1d1d1f] text-sm";
+    alertMessage.textContent = "Continuous density metrics within expected parameters.";
+    alertMessage.className = "text-xs text-[#86868b] mt-1 font-medium leading-relaxed";
 }
 
 function checkFallbackState() {

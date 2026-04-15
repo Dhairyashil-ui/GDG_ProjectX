@@ -21,7 +21,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.crowdpulse.camera.R
 import com.crowdpulse.camera.ui.theme.*
 
 @Composable
@@ -138,37 +140,20 @@ fun AuthScreen(
             // Logo mark
             Box(
                 modifier = Modifier
-                    .size(64.dp)
-                    .clip(CircleShape)
-                    .background(
-                        Brush.radialGradient(
-                            colors = listOf(PrimaryAccent.copy(alpha = 0.1f), SecondaryAccent.copy(alpha = 0.05f))
-                        )
-                    )
-                    .border(1.dp, PrimaryAccent.copy(alpha = 0.3f), CircleShape),
+                    .size(80.dp),
                 contentAlignment = Alignment.Center
             ) {
-                // Simple CP logo icon drawn with Canvas
-                androidx.compose.foundation.Canvas(modifier = Modifier.size(36.dp)) {
-                    val cx = size.width / 2f
-                    val cy = size.height / 2f
-                    drawArc(
-                        brush = Brush.sweepGradient(listOf(PrimaryAccent, SecondaryAccent, PrimaryAccent)),
-                        startAngle = -90f, sweepAngle = 270f, useCenter = false,
-                        style = Stroke(width = 4f, cap = StrokeCap.Round)
-                    )
-                    drawCircle(
-                        brush = Brush.radialGradient(listOf(PrimaryAccent, SecondaryAccent)),
-                        radius = size.minDimension * 0.2f,
-                        center = Offset(cx, cy)
-                    )
-                }
+                Image(
+                    painter = painterResource(id = R.drawable.app_logo),
+                    contentDescription = "Croudify Logo",
+                    modifier = Modifier.fillMaxSize().clip(CircleShape)
+                )
             }
 
             Spacer(Modifier.height(20.dp))
 
             Text(
-                text = "CrowdPulse",
+                text = "Croudify",
                 style = MaterialTheme.typography.headlineMedium,
                 color = TextPrimary,
                 fontWeight = FontWeight.Bold

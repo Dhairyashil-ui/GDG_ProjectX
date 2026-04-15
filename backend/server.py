@@ -37,8 +37,8 @@ if ML_NODE_URL:
 else:
     logger.info("Local ML Mode Enabled: Loading YOLO model...")
     from ultralytics import YOLO
-    model = YOLO("yolov8n.pt")
-    logger.info("YOLO model loaded.")
+    model = YOLO("yolov8m.pt")
+    logger.info("YOLO medium model loaded for high accuracy.")
 
 # ── Session Store ─────────────────────────────────────────────────────────────
 SESSION_TTL_SECONDS = 86400  # 24 hours
@@ -159,10 +159,9 @@ async def process_inference_route(request: Request):
 # PERF FIX: Pre-resize to 320x320 before YOLO inference.
 # Root cause of 55-83 second inference times on Render free tier:
 #   YOLO was receiving a full 640x480 image and internally rescaling to its
-#   inference size. By explicitly resizing to 320x320 BEFORE calling model(),
-#   and setting imgsz=320, we cut the number of pixels by ~75%, which
-#   dramatically reduces inference time (typically 4-8x speedup on CPU).
-INFERENCE_SIZE = 320  # Reduce to 224 for even faster inference if needed
+#   inference size. We previously shrunk this to 320x320 for Render free tier.
+#   Since we process locally now, we bump this to 640 to find small/distant targets.
+INFERENCE_SIZE = 640
 
 def process_frame(frame_bytes: bytes) -> Dict:
     np_arr = np.frombuffer(frame_bytes, np.uint8)

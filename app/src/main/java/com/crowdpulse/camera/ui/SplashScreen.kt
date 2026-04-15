@@ -24,6 +24,9 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.foundation.Image
+import androidx.compose.ui.res.painterResource
+import com.crowdpulse.camera.R
 import com.crowdpulse.camera.ui.theme.*
 import kotlinx.coroutines.delay
 
@@ -131,54 +134,24 @@ fun SplashScreen(
         Column(
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            // Logo mark with pulsing rings
+            // Logo Image with scale-in animation
+            val logoScale by infiniteTransition.animateFloat(
+                initialValue = 0.8f, targetValue = 1.05f,
+                animationSpec = infiniteRepeatable(tween(2600, easing = EaseOutSine), RepeatMode.Reverse),
+                label = "logo_scale"
+            )
+
             Box(
                 contentAlignment = Alignment.Center,
-                modifier = Modifier.size(160.dp)
+                modifier = Modifier
+                    .size(160.dp)
+                    .scale(logoScale)
             ) {
-                // Pulse rings
-                PulseRing(scale = ring1Scale, alpha = ring1Alpha, size = 160.dp, color = PrimaryAccent)
-                PulseRing(scale = ring2Scale, alpha = ring2Alpha, size = 140.dp, color = SecondaryAccent)
-                PulseRing(scale = ring3Scale, alpha = ring3Alpha, size = 120.dp, color = PrimaryAccent)
-
-                // Logo canvas — rotating arc ring + inner dot
-                Canvas(
-                    modifier = Modifier
-                        .size(80.dp)
-                ) {
-                    val cx = size.width / 2f
-                    val cy = size.height / 2f
-                    val radius = size.minDimension / 2f - 6f
-
-                    // Outer arc ring
-                    drawArc(
-                        brush = Brush.sweepGradient(
-                            colors = listOf(PrimaryAccent, SecondaryAccent, PrimaryAccent),
-                        ),
-                        startAngle = logoRotation,
-                        sweepAngle = 260f,
-                        useCenter = false,
-                        style = Stroke(width = 5f, cap = StrokeCap.Round),
-                    )
-
-                    // Inner filled circle
-                    drawCircle(
-                        brush = Brush.radialGradient(
-                            colors = listOf(PrimaryAccent, SecondaryAccent),
-                            center = Offset(cx, cy),
-                            radius = radius * 0.55f
-                        ),
-                        radius = radius * 0.5f,
-                        center = Offset(cx, cy)
-                    )
-
-                    // Inner dot highlight
-                    drawCircle(
-                        color = Color.White.copy(alpha = 0.4f),
-                        radius = radius * 0.15f,
-                        center = Offset(cx - radius * 0.15f, cy - radius * 0.15f)
-                    )
-                }
+                Image(
+                    painter = painterResource(id = R.drawable.app_logo),
+                    contentDescription = "Croudify Logo",
+                    modifier = Modifier.fillMaxSize().clip(CircleShape)
+                )
             }
 
             Spacer(Modifier.height(36.dp))
@@ -186,13 +159,13 @@ fun SplashScreen(
             // Brand wordmark
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
-                    text = "Crowd",
+                    text = "Croud",
                     style = MaterialTheme.typography.displayMedium,
                     color = TextPrimary,
                     modifier = Modifier.alpha(animWord1)
                 )
                 Text(
-                    text = "Pulse",
+                    text = "ify",
                     style = MaterialTheme.typography.displayMedium,
                     color = PrimaryAccent,
                     modifier = Modifier.alpha(animWord2)
