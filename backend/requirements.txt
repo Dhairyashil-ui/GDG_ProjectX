@@ -1,0 +1,9 @@
+fastapi
+uvicorn[standard]
+motor
+httpx
+pymongo
+opencv-python-headless
+numpy
+ultralytics
+pydantic
